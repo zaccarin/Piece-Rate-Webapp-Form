@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <base target="_top" />
+  <title>Piece Rate Tailor Form</title>
+  <style>
+    :root {
+      --primary: #007bff;
+      --danger: #dc3545;
+      --bg: #f8f9fa;
+      --text: #212529;
+      --radius: 4px;
+      --row-h: 38px;
+      --gap: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; padding:0;
+      font-family:Arial,sans-serif;
+      background:var(--bg); color:var(--text);
+    }
+    .container {
+      max-width:100%; margin:20px auto; padding:20px;
+      background:#fff; border-radius:var(--radius);
+      box-shadow:0 2px 8px rgba(0,0,0,.1);
+    }
+    h2 { margin-top:0; color:var(--primary); }
+
+    /* Header */
+    .header {
+      display:flex; flex-wrap:wrap; gap:var(--gap); align-items:center;
+      margin-bottom:16px;
+    }
+    .header label { min-width:80px; font-weight:500; }
+    .form-control {
+      flex:1 1 200px; padding:6px 8px; height:var(--row-h);
+      border:1px solid #ccc; border-radius:var(--radius); font-size:14px;
+    }
+    .form-control.invalid {
+      border-color:var(--danger)!important;
+    }
+
+    /* Table */
+    .table-wrap { overflow-x:auto; }
+    table {
+      width:100%; border-collapse:collapse;
+      table-layout:fixed;    /* fixed so percentages apply */
+    }
+    thead th { background:var(--primary); color:#fff; font-weight:500; }
+/* Table fixed so % widths always honored */
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* Tight percentages from the earlier working version */
+.op-col      { width: 38%; }
+.garment-col { width: 20%; }
+.rate-col    { width: 7%; }
+.tailor-col  { width: 22%; }
+.qty-col     { width: 7%; }
+.amt-col     { width: 7%; }
+.action-col  { width: 5%; }
+
+/* Inputs & selects fill exactly their cells */
+.op-col select,
+.garment-col input,
+.tailor-col select,
+.rate-col input,
+.qty-col  input,
+.amt-col  input {
+  width: 100%;
+  height: var(--row-h);
+  box-sizing: border-box;
+}
+
+/* Inline “＋” button sits beside the select without affecting width */
+.op-col {
+  position: relative;
+}
+.op-col .btn.small {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+.op-col select {
+  padding-left: calc(var(--row-h) + 8px); /* make room for the button */
+  flex: none; /* do NOT flex-grow */
+}
+
+
+    /* Buttons */
+    .btn {
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:0 12px; height:var(--row-h);
+      background:var(--primary); color:#fff; border:none;
+      border-radius:var(--radius); cursor:pointer; font-size:14px;
+    }
+    .btn:hover { opacity:.9; }
+    .removeBtn {
+      background:var(--danger); width:var(--row-h); padding:0; color:#fff;
+    }
+    .removeBtn:disabled { opacity:.4; cursor:not-allowed; }
+
+    #submitBtn { width:100%; margin-top:16px; }
+    #msg       { margin-top:12px; font-weight:500; }
+
+    /* Mobile stack */
+    @media(max-width:768px) {
+      table,thead,tbody,th,td,tr{display:block;}
+      thead tr{position:absolute;top:-9999px;left:-9999px;}
+      tr{margin-bottom:16px;border:1px solid #ccc;border-radius:var(--radius);}
+      td{display:flex;justify-content:space-between;padding:8px;}
+      td::before{content:attr(data-label);font-weight:500;flex:1 1 50%;}
+      td>*{flex:1 1 50%;}
+      .removeBtn{margin-left:var(--gap);}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Piece Rate Tailor Form</h2>
+    <div class="header">
+      <label for="style">Style ID:</label>
+      <select id="style" class="form-control">
+        <option value="">-- Select --</option>
+      </select>
+      <label for="globalDate">Date:</label>
+      <input type="date" id="globalDate" class="form-control" />
+    </div>
+
+    <form id="entryForm">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="op-col">Operation</th>
+              <th class="garment-col">Garment</th>
+              <th class="rate-col">Rate</th>
+              <th class="tailor-col">Tailor</th>
+              <th class="qty-col">Qty</th>
+              <th class="amt-col">Amount</th>
+              <th class="action-col">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button id="submitBtn" class="btn" type="submit">Submit All</button>
+      <div id="msg"></div>
+    </form>
+  </div>
+
+  <script>
+    const $ = s => document.querySelector(s),
+          $$ = s => document.querySelectorAll(s),
+          msg = (t,c='black')=>{$('#msg').textContent=t;$('#msg').style.color=c;};
+
+    let tailors=[], ops=[];
+
+    function toggleRemove(){
+      const rows=$$('tbody tr');
+      rows.forEach(r=>r.querySelector('.removeBtn').disabled=rows.length===1);
+    }
+
+    function fillRow(tr){
+      tr.innerHTML=`
+        <td class="op-col">
+          <button type="button" class="btn small addRowInline">＋</button>
+          <select class="operation form-control"><option value="">--</option></select>
+        </td>
+        <td class="garment-col"><input class="garment form-control" readonly /></td>
+        <td class="rate-col"><input class="rate form-control" readonly /></td>
+        <td class="tailor-col"><select class="tailor form-control"><option value="">--</option></select></td>
+        <td class="qty-col"><input type="number" min="1" class="quantity form-control" /></td>
+        <td class="amt-col"><input class="amount form-control" readonly /></td>
+        <td class="action-col"><button type="button" class="removeBtn">×</button></td>`;
+      // populate selects
+      const os=tr.querySelector('.operation'),
+            ts=tr.querySelector('.tailor');
+      ops.forEach(o=>os.add(new Option(o,o)));
+      tailors.forEach(t=>ts.add(new Option(t,t)));
+
+      // bind events
+      tr.querySelector('.removeBtn').addEventListener('click',()=>{
+        tr.remove(); toggleRemove();
+      });
+      tr.querySelector('.operation').addEventListener('change',e=>{
+        const v=e.target.value, g=tr.querySelector('.garment'),
+              r=tr.querySelector('.rate');
+        g.value=r.value=''; tr.querySelector('.quantity').value='';
+        tr.querySelector('.amount').value='';
+        if(!v) return;
+        google.script.run
+          .withFailureHandler(er=>msg(er.message,'red'))
+          .withSuccessHandler(d=>{
+            g.value=d.garment;
+            r.value=parseFloat(d.rate).toFixed(2);
+          })
+          .getOperationDetails(v);
+      });
+      tr.querySelector('.quantity').addEventListener('input',()=>{
+        const rate=parseFloat(tr.querySelector('.rate').value)||0,
+              qty =parseFloat(tr.querySelector('.quantity').value)||0;
+        tr.querySelector('.amount').value=(rate*qty).toFixed(2);
+      });
+      tr.querySelector('.addRowInline').addEventListener('click',addRow);
+    }
+
+    function addRow(){
+      const tr=document.createElement('tr');
+      $('tbody').appendChild(tr);
+      fillRow(tr);
+      toggleRemove();
+    }
+
+    document.addEventListener('DOMContentLoaded',()=>{
+      google.script.run
+        .withFailureHandler(er=>msg(er.message,'red'))
+        .withSuccessHandler(list=>{
+          const sel=$('#style');
+          sel.innerHTML='<option value="">-- Select --</option>';
+          list.forEach(v=>sel.add(new Option(v,v)));
+        })
+        .getStyles();
+
+      google.script.run
+        .withFailureHandler(er=>msg(er.message,'red'))
+        .withSuccessHandler(list=>tailors=list)
+        .getTailors();
+
+      $('#style').addEventListener('change',e=>{
+        ops=[];
+        google.script.run
+          .withFailureHandler(er=>msg(er.message,'red'))
+          .withSuccessHandler(list=>{
+            ops=list;
+            $$('tbody tr').forEach(fillRow);
+          })
+          .getOperations(e.target.value);
+      });
+
+      // one row by default
+      addRow();
+
+      $('#entryForm').addEventListener('submit',e=>{
+        e.preventDefault();
+        const style=$('#style').value, date=$('#globalDate').value;
+        if(!style) return msg('Select style','red');
+        if(!date)  return msg('Select date','red');
+
+        const trs=$$('tbody tr');
+        if(!trs.length) return msg('Add operations','red');
+
+        const rows=[];
+        for(const tr of trs){
+          const op=tr.querySelector('.operation').value,
+                tl=tr.querySelector('.tailor').value,
+                qt=tr.querySelector('.quantity').value;
+          if(!op||!tl||!qt) return msg('Complete all fields','red');
+          rows.push({
+            operation:op,
+            garment:tr.querySelector('.garment').value,
+            rate:tr.querySelector('.rate').value,
+            tailor:tl,
+            quantity:qt,
+            amount:tr.querySelector('.amount').value
+          });
+        }
+
+        $('#submitBtn').disabled=true;
+        msg('Saving…');
+        google.script.run
+          .withFailureHandler(er=>{
+            msg('Error:'+er.message,'red');
+            $('#submitBtn').disabled=false;
+          })
+          .withSuccessHandler(res=>{
+            $('#submitBtn').disabled=false;
+            if(res.success){
+              msg('Saved!','green');
+              $('tbody').innerHTML='';
+              addRow();
+            } else {
+              msg(res.message,'red');
+            }
+          })
+          .submitForm({ style, date, rows });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+// File: Code.gs
+// Backend for Piece Rate Tailor Form
+// Now using Cutting_data for both operations list and details (Item + Rate)
+
+function getColIndex(sheet, header) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idx = headers.findIndex(h => h.trim() === header);
+  if (idx === -1) throw new Error(`Header '${header}' not found in sheet '${sheet.getName()}'`);
+  return idx + 1;
+}
+
+function doGet() {
+  return HtmlService
+    .createHtmlOutputFromFile('Index')
+    .setTitle('Piece Rate Tailor Form');
+}
+
+function getStyles() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Cutting_data');
+  const col = getColIndex(sh, 'Style ID');
+  const data = sh.getRange(2, col, Math.max(sh.getLastRow() - 1, 0))
+                 .getValues().flat();
+  return [...new Set(data.filter(String))].sort();
+}
+
+function getTailors() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('Tailor');
+  const col = getColIndex(sh, 'Tailor');
+  const data = sh.getRange(2, col, Math.max(sh.getLastRow() - 1, 0))
+                 .getValues().flat();
+  return [...new Set(data.filter(String))].sort();
+}
+
+function getOperations(style) {
+  const sh   = SpreadsheetApp.getActive().getSheetByName('Cutting_data');
+  const sCol = getColIndex(sh, 'Style ID');
+  const oCol = getColIndex(sh, 'Operation');
+  const rows = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), sh.getLastColumn()).getValues();
+  return [...new Set(
+    rows
+      .filter(r => r[sCol-1] === style && r[oCol-1])
+      .map(r => r[oCol-1])
+  )].sort();
+}
+
+function getOperationDetails(op) {
+  const sh     = SpreadsheetApp.getActive().getSheetByName('Cutting_data');
+  const oCol   = getColIndex(sh, 'Operation');
+  const itemCol= getColIndex(sh, 'Item');
+  const rateCol= getColIndex(sh, 'Rate');
+  const rows   = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 0), sh.getLastColumn()).getValues();
+
+  const row = rows.find(r => r[oCol - 1] === op);
+  if (!row) throw new Error(`Operation '${op}' not found in Cutting_data`);
+
+  const item = row[itemCol - 1];
+  const rate = row[rateCol - 1];
+  if (item === '' || rate === '') {
+    throw new Error(`Missing Item or Rate for operation '${op}' in Cutting_data`);
+  }
+
+  return { garment: item, rate };  // we still return under `{ garment, rate }` for UI field mapping
+}
+
+function submitForm(payload) {
+  const { style, date, rows } = payload;
+  const sh = SpreadsheetApp.getActive().getSheetByName('Data_Entry');
+  const existing = sh.getDataRange().getValues().slice(1)
+    .map(r => [r[0], r[2], r[1], r[4], r[5]].join('|'));
+  const seen = new Set();
+
+  for (const r of rows) {
+    const key = [style, r.operation, r.garment, date, r.tailor].join('|');
+    if (seen.has(key)) return { success:false, message:`Duplicate: ${r.operation}` };
+    if (existing.includes(key)) return { success:false, message:`Exists: ${r.operation}` };
+    if (!r.operation || !r.tailor || !r.quantity || r.quantity <= 0)
+      return { success:false, message:'Missing or invalid fields' };
+    seen.add(key);
+  }
+
+  const out = rows.map(r =>
+    [style, r.garment, r.operation, r.rate, date, r.tailor, r.quantity, r.amount]
+  );
+  sh.getRange(sh.getLastRow() + 1, 1, out.length, out[0].length).setValues(out);
+  return { success:true };
+}
